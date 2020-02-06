@@ -1,0 +1,5 @@
+host = 'localhost'
+user = 'root'
+password = ''
+db = 'coinbase_bot'
+charset = 'utf8'
