@@ -1,3 +1,5 @@
+import sys
+import os
 import xlsxwriter
 import pymysql.cursors
 from datetime import datetime
@@ -8,8 +10,35 @@ from start_timestamps import start_timestamps
 import granularities
 from consts import months_json, month_days
 
+if sys.version_info >= (3, 0):
+    import configparser as ConfigParser
+else:
+    import ConfigParser
+
+def load_config(defaults):
+  _settings_dir = "."
+  config_file = os.path.join(_settings_dir, "config.ini")
+  if os.path.exists(config_file):
+    try:
+      config = ConfigParser.SafeConfigParser()
+      config.read(config_file)
+      if config.has_section("analyzing"):
+        config_items = dict(config.items("analyzing"))
+        defaults['analyzing'] = config_items
+
+    except ConfigParser.Error as e:
+      print("\nError parsing config file: " + config_file)
+      print(str(e))
+      exit(1)
+
+  return defaults
 
 def create_excel(coin, granularity, rows):
+  highlight_up = int(config_params['analyzing']['highlight_up'])
+  highlight_up_color = str(config_params['analyzing']['highlight_up_color'])
+  highlight_down = int(config_params['analyzing']['highlight_down'])
+  highlight_down_color = str(config_params['analyzing']['highlight_down_color'])
+
   Path("./output/{}".format(coin)).mkdir(parents=True, exist_ok=True)
 
   prev_year = ''
@@ -46,13 +75,18 @@ def create_excel(coin, granularity, rows):
       number_format = workbook.add_format({"num_format": "#,##0.00", "bg_color": "#dbdbdb", "border": 1})
       number_format_b = workbook.add_format({"num_format": "#,##0.00", "bg_color": "#dbdbdb", "top": 1, "right": 1, "bottom": 5, "left": 1})
       down_format = workbook.add_format({"num_format": "#,##0.00", "font_color": "#ff0000", "bg_color": "#dbdbdb", "border": 1})
+      down_highlight_format = workbook.add_format({"num_format": "#,##0.00", "font_color": "#ff0000", "bg_color": "#" + highlight_down_color, "border": 1})
       down_format_b = workbook.add_format({"num_format": "#,##0.00", "font_color": "#ff0000", "bg_color": "#dbdbdb", "top": 1, "right": 1, "bottom": 5, "left": 1})
+      down_highlight_format_b = workbook.add_format({"num_format": "#,##0.00", "font_color": "#ff0000", "bg_color": "#" + highlight_down_color, "top": 1, "right": 1, "bottom": 5, "left": 1})
       open_format = workbook.add_format({"num_format": "#,##0.00", "font_color": "#0070c0", "bg_color": "#dbdbdb", "border": 1})
       open_format_b = workbook.add_format({"num_format": "#,##0.00", "font_color": "#0070c0", "bg_color": "#dbdbdb", "top": 1, "right": 1, "bottom": 5, "left": 1})
       up_format = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#dbdbdb", "top": 1, "right": 1, "bottom": 1, "left": 1})
+      up_highlight_format = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#" + highlight_up_color, "top": 1, "right": 1, "bottom": 1, "left": 1})
       up_format_r = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#dbdbdb", "top": 1, "right": 5, "bottom": 1, "left": 1})
+      up_highlight_format_r = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#" + highlight_up_color, "top": 1, "right": 5, "bottom": 1, "left": 1})
       up_format_b = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#dbdbdb", "top": 1, "right": 1, "bottom": 5, "left": 1})
       up_format_rb = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#dbdbdb", "top": 1, "right": 5, "bottom": 5, "left": 1})
+      up_highlight_format_rb = workbook.add_format({"num_format": "#,##0.00", "font_color": "#00b050", "bg_color": "#" + highlight_up_color, "top": 1, "right": 5, "bottom": 5, "left": 1})
     if prev_month != month:
       sheetname = months_json[month]
       sheet = workbook.add_worksheet(sheetname)
@@ -61,13 +95,13 @@ def create_excel(coin, granularity, rows):
       sheet.set_column("B:H", 10)
 
       sheet.write("A1", "Date", header_format_l)
-      sheet.write("B1", "Down %", header_format)
-      sheet.write("C1", "Down $", header_format)
+      sheet.write("B1", "Down $", header_format)
+      sheet.write("C1", "Down %", header_format)
       sheet.write("D1", "Low", header_format)
       sheet.write("E1", "Open", header_format)
       sheet.write("F1", "High", header_format)
-      sheet.write("G1", "Up %", header_format)
-      sheet.write("H1", "Up $", header_format_r)
+      sheet.write("G1", "Up $", header_format)
+      sheet.write("H1", "Up %", header_format_r)
       
       r_index = 2
 
@@ -82,22 +116,34 @@ def create_excel(coin, granularity, rows):
     
     if r_index - 1 == days:
       sheet.write_datetime("A{}".format(r_index), datetime.fromisoformat(timestamp), datetime_format_b)
-      sheet.write_number("B{}".format(r_index), down_percent, down_format_b)
-      sheet.write_number("C{}".format(r_index), down_price, down_format_b)
+      sheet.write_number("B{}".format(r_index), down_price, down_format_b)
+      if down_percent >= highlight_down:
+        sheet.write_number("C{}".format(r_index), down_percent, down_highlight_format_b)
+      else:
+        sheet.write_number("C{}".format(r_index), down_percent, down_format_b)
       sheet.write_number("D{}".format(r_index), low, number_format_b)
       sheet.write_number("E{}".format(r_index), open, open_format_b)
       sheet.write_number("F{}".format(r_index), high, number_format_b)
-      sheet.write_number("G{}".format(r_index), up_percent, up_format_b)
-      sheet.write_number("H{}".format(r_index), up_price, up_format_rb)
+      sheet.write_number("G{}".format(r_index), up_price, up_format_b)
+      if up_percent >= highlight_up:
+        sheet.write_number("H{}".format(r_index), up_percent, up_highlight_format_rb)
+      else:
+        sheet.write_number("H{}".format(r_index), up_percent, up_format_rb)
     else:
       sheet.write_datetime("A{}".format(r_index), datetime.fromisoformat(timestamp), datetime_format)
-      sheet.write_number("B{}".format(r_index), down_percent, down_format)
-      sheet.write_number("C{}".format(r_index), down_price, down_format)
+      sheet.write_number("B{}".format(r_index), down_price, down_format)
+      if down_percent >= highlight_down:
+        sheet.write_number("C{}".format(r_index), down_percent, down_highlight_format)
+      else:
+        sheet.write_number("C{}".format(r_index), down_percent, down_format)
       sheet.write_number("D{}".format(r_index), low, number_format)
       sheet.write_number("E{}".format(r_index), open, open_format)
       sheet.write_number("F{}".format(r_index), high, number_format)
-      sheet.write_number("G{}".format(r_index), up_percent, up_format)
-      sheet.write_number("H{}".format(r_index), up_price, up_format_r)
+      sheet.write_number("G{}".format(r_index), up_price, up_format)
+      if up_percent >= highlight_up:
+        sheet.write_number("H{}".format(r_index), up_percent, up_highlight_format_r)
+      else:
+        sheet.write_number("H{}".format(r_index), up_percent, up_format_r)
     
     r_index += 1
 
@@ -138,6 +184,8 @@ def create_file(coin, granularity):
     "granularity": granularity
   }
 
+defaults = {}
+config_params = load_config(defaults)
 
 if __name__ == "__main__":
   coins = start_timestamps.keys()

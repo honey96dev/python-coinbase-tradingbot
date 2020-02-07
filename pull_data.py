@@ -6,6 +6,7 @@ from datetime import datetime
 from datetime import timedelta
 import pymysql.cursors
 import pytz
+import time
 
 from start_timestamps import start_timestamps
 import mysql_config
@@ -170,6 +171,16 @@ def pull_data(coin, granularity, start_time):
       cursor.executemany(sql1, prices)
       cursor.executemany(sql2, up_downs)
       conn.commit()
+  except ZeroDivisionError:
+    print(row, low, high, open, close, volume, rows)
+    conn.close()
+    return {
+      "statusCode": 500,
+      "step": "Pull Data",
+      "coin": coin,
+      "granularity": granularity,
+      "startTime": start_time
+    }
   except Exception as inst:
     print(type(inst), inst.args, inst)
     # print(conn.cursor()._last_executed)
@@ -212,6 +223,7 @@ def interval_proc(sc):
       for interval in intervals:
         start_time = get_last_timestamp(coin, interval)
         print(pull_data(coin, interval, start_time))
+        time.sleep(3)
 
   except:
     time.sleep(5 * 60)
